@@ -76,16 +76,25 @@ var PeerConnection = React.createClass({
 			}
 			this.setState(this.state);
 			conn.on('data', function (data) {
-				if (data.constructor === ArrayBuffer) {
-					console.log('inside array buffer');
-				}
 				this.getMessage(data);
 			}.bind(this));
 		}.bind(this));
 	},
 	getMessage: function (msg) {
-		var message = JSON.parse(msg);
-		this.state.messages.push(message);
+		if (msg.blob && msg.blob.constructor === ArrayBuffer) {
+			var dataView = new Uint8Array(msg.blob);
+			var dataBlob = new Blob([dataView]);
+			var url = window.URL.createObjectURL(dataBlob);
+			var message = _.extend(JSON.parse(msg.file), {url: url});
+			this.state.messages.push(message);
+		} else {
+			try {
+				var message = JSON.parse(msg);
+				this.state.messages.push(message);
+			} catch (e) {
+				console.log(e);
+			}
+		}
 		this.setState(this.state);
 	},
 	sendMessage: function (event) {
@@ -110,9 +119,9 @@ var PeerConnection = React.createClass({
 	uploadFile: function (event) {
 		event.preventDefault();
 		var file = event.target.files[0];
-
 		file.from = this.props.user;
-		this.eachActiveConnection(file);
+		var blob = file.slice();
+		this.eachActiveConnection({file: JSON.stringify(file), blob: blob});
 	},
 	render: function () {
 		var messages = this.state.messages.map(function (message) {
@@ -153,7 +162,7 @@ var File = React.createClass({
 	},
 	render: function () {
 		return (
-			<p> {this.props.from} just sent you the file: {this.props.file.name} </p>
+			<p> {this.props.from} just sent you the file: <a download={this.props.file.name} href={this.props.file.url}>{this.props.file.name}</a></p>
 		);
 	}
 });
