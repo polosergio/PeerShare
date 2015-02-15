@@ -4,7 +4,7 @@ var Home = React.createClass({
 	render: function () {
 		return (
 			<div>
-				Hello World!
+				<h4>Hope it works</h4>
 			</div>
 		);
 	}
@@ -12,7 +12,7 @@ var Home = React.createClass({
 
 var Header = React.createClass({
 	render: function () {
-		var subText = 'For Annete\'s use only ',
+		var subText = 'For Annette\'s use only ',
 			imgStyle = {
 				height: '30px',
 				width: '30px'
