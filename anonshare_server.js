@@ -19,7 +19,7 @@ peerServer.on('connection', function (id) {
 });
 
 peerServer.on('disconnect', function (id) {
-	connections.splice(connections.indexOf({peerID: id}), 1);
+	connections.splice(connections.indexOf(_.findWhere(connections, {peerID: id})), 1);
 });
 
 app.get('/rooms', function (req, res) {

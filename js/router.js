@@ -1,16 +1,14 @@
 var Router = ReactRouter,
 	DefaultRoute = Router.DefaultRoute,
-	Link = Router.Link;
 	Route = Router.Route,
-	RouteHandler = Router.RouteHandler,
-	App = React.createClass({
+	RouteHandler = Router.RouteHandler;
+
+var App = React.createClass({
 	render: function () {
 		return (
-			<div>
-				<ul>
-					<li><Link to="app">Home</Link></li>
-					<li><Link to="rooms">Rooms</Link></li>
-				</ul>
+			<div className="container-fluid">
+				<Header />
+				<NavigationBar />
 				<RouteHandler/>
 			</div>
 		);
