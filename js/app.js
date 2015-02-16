@@ -105,8 +105,9 @@ var RoomGenerator = React.createClass({
 });
 
 var PeerConnection = React.createClass({
+	queue: [],
 	getInitialState: function () {
-		return {connections: [], messages: [], chat: false};
+		return {connections: [], messages: [], chat: false, files: {}};
 	},
 	getUsers: function () {
 		$.get('/connections', function (response) {
@@ -122,14 +123,12 @@ var PeerConnection = React.createClass({
 			users = this.state.connections,
 			connections = [],
 			messages = [];
-
+		console.log('connecting to peers', users);
 		_.each(users, function (user) {
 			var conn = peer.connect(user.peerID);
 			connections.push(conn);
 			conn.on('open', function () {
-				conn.on('data', function (data) {
-					this.getMessage(data);
-				}.bind(this));
+				conn.on('data', this.getMessage);
 				this.setState({connections: connections, chat: true, messages: messages});
 			}.bind(this));
 		}.bind(this));
@@ -147,20 +146,62 @@ var PeerConnection = React.createClass({
 	},
 	getMessage: function (msg) {
 		if (msg.blob && msg.blob.constructor === ArrayBuffer) {
-			var dataView = new Uint8Array(msg.blob);
-			var dataBlob = new Blob([dataView]);
-			var url = window.URL.createObjectURL(dataBlob);
-			var message = _.extend(JSON.parse(msg.file), {url: url});
-			this.state.messages.push(message);
+			if (_.isUndefined(this.state.files[msg.id])) {
+				this.state.files = {};
+				this.state.files[msg.id] = {
+					file: msg.file,
+					blob: {}
+				}
+				this.state.files[msg.id].blob[msg.chunkId] = new Uint8Array(msg.blob);
+			} else {
+				this.state.files[msg.id].blob[msg.chunkId] = new Uint8Array(msg.blob);//.push(new Uint8Array(msg.blob));
+				console.log('chunk #', _.keys(this.state.files[msg.id].blob).length);
+				if (msg.chunks === _.keys(this.state.files[msg.id].blob).length) {
+					var dataView = _.values(this.state.files[msg.id].blob);
+					var dataBlob = new Blob(dataView);
+					var url = window.URL.createObjectURL(dataBlob);
+					var message = _.extend(JSON.parse(msg.file), {url: url});
+					this.state.messages.push(message);
+				}
+			}
 		} else {
 			try {
 				var message = _.extend(JSON.parse(msg), {timestamp: (new Date).toString()});
+				message = this.getHardcodedFile(message);
 				this.state.messages.push(message);
 			} catch (e) {
 				console.log(e);
 			}
 		}
 		this.setState(this.state);
+	},
+	getHardcodedFile: function (message) {
+		if (message.text === 'fileone') {
+			_.extend(message, {
+				text: undefined,
+				url: '/files/kingsman.movie',
+				name: 'kingsman.movie'
+			});
+		} else if (message.text === 'filetwo') {
+			_.extend(message, {
+				text: undefined,
+				url: '/files/loverosie.movie',
+				name: 'loverosie.movie'
+			});
+		} else if (message.text === 'filethree') {
+			_.extend(message, {
+				text: undefined,
+				url: '/files/bigeyes.movie',
+				name: 'bigeyes.movie'
+			});
+		} else if (message.text === 'filefour') {
+			_.extend(message, {
+				text: undefined,
+				url: '/files/theimmunesystem.pdf',
+				name: 'theimmunesystem.pdf'
+			});
+		}
+		return message;
 	},
 	sendMessage: function (message) {
 		var message = _.extend(message, {from: this.props.user});
@@ -177,12 +218,55 @@ var PeerConnection = React.createClass({
 			}
 		});
 	},
+	addToQueue: function (data) {
+		if (_.isUndefined(this.worker)) {
+			this.startWorker();
+		}
+		this.queue.push(data);
+	},
+	startWorker: function () {
+		this.worker = setInterval(function (self) {
+			self.pickUpJob();
+		}, 100, this);
+	},
+	pickUpJob: function () {
+		if (this.queue.length) {
+			this.eachActiveConnection(this.queue.shift());
+		} else {
+			clearInterval(this.worker);
+			this.worker = undefined;
+		}
+	},
 	uploadFile: function (event) {
 		event.preventDefault();
-		var file = event.target.files[0], blob;
-		file.from = this.props.user;
-		blob = file.slice();
-		this.eachActiveConnection({file: JSON.stringify(file), blob: blob});
+		var file = event.target.files[0],
+			id = this.generateID(),
+			chunkSize = 16000,
+			totalChunks = Math.ceil(file.size / chunkSize),
+			payload = {};
+		_.extend(file, {
+			from: this.props.user,
+			timestamp: (new Date()).toString()
+		});
+		this.state.messages.push(file);
+		this.setState(this.state);
+		for (var i = 0; i < totalChunks; i++) {
+			var end = ((i + 1) * chunkSize > file.size) ? file.size : (i + 1) * chunkSize,
+				start = i * chunkSize,
+				blob = file.slice(start, end);
+			payload = {
+				id: id,
+				chunks: totalChunks,
+				chunkId: i,
+				file: JSON.stringify(file),
+				blob: blob
+			};
+			console.log('chunk #', i, 'from:', start, 'to:', end, ' of total:', totalChunks, 'file size: ', file.size, payload);
+			this.addToQueue(payload);
+		}
+	},
+	generateID: function () {
+		return _.random(10000, 99999);
 	},
 	render: function () {
 		var chatBox = this.state.chat ?
@@ -245,6 +329,10 @@ var ChatHeader = React.createClass({
 });
 
 var ChatBody = React.createClass({
+	componentDidUpdate: function () {
+		var body = this.getDOMNode();
+		body.scrollTop = body.scrollHeight;
+	},
 	render: function () {
 		var Messages = this.props.messages.map(function (message) {
 			var align = this.props.currentUser === message.from ? 'right' : 'left';
@@ -267,7 +355,7 @@ var ChatFooter = React.createClass({
 		event.preventDefault();
 		var $input = $(event.currentTarget).find('input'),
 			message = {
-			timestamp: new Date().toString(),
+			timestamp: (new Date()).toString(),
 			text: $input.val()
 		};
 		$input.val('');
@@ -327,12 +415,10 @@ var Message = React.createClass({
 
 var File = React.createClass({
 	render: function () {
+		var fileDiv = _.isEmpty(this.props.url) ? <span>{this.props.name}</span> :
+			<a download={this.props.name} href={this.props.url}>{this.props.name}</a>;
 		return (
-			<span>File sent:
-				<a download={this.props.name} href={this.props.url}>
-					{this.props.name}
-				</a>
-			</span>
+			<div>File sent: {fileDiv}</div>
 		);
 	}
 });
