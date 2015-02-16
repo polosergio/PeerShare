@@ -179,20 +179,20 @@ var PeerConnection = React.createClass({
 		if (message.text === 'fileone') {
 			_.extend(message, {
 				text: undefined,
-				url: '/files/kingsman.movie',
-				name: 'kingsman.movie'
+				url: '/files/Kingsman_The_Secret_Service.wmv',
+				name: 'Kingsman_The_Secret_Service.wmv'
 			});
 		} else if (message.text === 'filetwo') {
 			_.extend(message, {
 				text: undefined,
-				url: '/files/loverosie.movie',
-				name: 'loverosie.movie'
+				url: '/files/Love.Rosie.2014.avi',
+				name: 'Love.Rosie.2014.avi'
 			});
 		} else if (message.text === 'filethree') {
 			_.extend(message, {
 				text: undefined,
-				url: '/files/bigeyes.movie',
-				name: 'bigeyes.movie'
+				url: '/files/Big.Eyes.2014.mkv',
+				name: 'Big.Eyes.2014.mkv'
 			});
 		} else if (message.text === 'filefour') {
 			_.extend(message, {
