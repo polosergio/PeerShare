@@ -1,6 +1,9 @@
 var Link = ReactRouter.Link;
 
 var Home = React.createClass({
+	componentDidMount: function () {
+		document.title = 'AnonShare';
+	},
 	render: function () {
 		return (
 			<div>
@@ -12,14 +15,15 @@ var Home = React.createClass({
 
 var Header = React.createClass({
 	render: function () {
-		var subText = 'For Annette\'s use only ',
+		var subText = 'WebRTC interface',//'For Annette\'s use only ',
 			imgStyle = {
 				height: '30px',
 				width: '30px'
-			};
+			},
+			smiley = '';//<img src="http://apps.timwhitlock.info/static/images/emoji/emoji-apple/1f602.png" style={imgStyle}/>;
 		return (
 			<div className="page-header">
-				<h1>Movie Sharing <small>{subText} <img src="http://apps.timwhitlock.info/static/images/emoji/emoji-apple/1f602.png" style={imgStyle}/></small></h1>
+				<h1>Movie Sharing <small>{subText} {smiley}</small></h1>
 			</div>
 		);
 	}
@@ -59,9 +63,15 @@ var NavigationBar = React.createClass({
 			<nav className="navbar navbar-default">
 				<div className="container-fluid">
 					<div className="navbar-header">
+						<button type="button" className="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar-locations">
+							<span className="sr-only">Toggle navigation</span>
+							<span className="icon-bar"></span>
+							<span className="icon-bar"></span>
+							<span className="icon-bar"></span>
+						</button>
 						<Link to={this.state.brand.url} className="navbar-brand">{this.state.brand.title}</Link>
 					</div>
-					<div className="collapse navbar-collapse">
+					<div className="collapse navbar-collapse" id="navbar-locations">
 						<ul className="nav navbar-nav">
 							{Locations}
 						</ul>
@@ -107,7 +117,7 @@ var RoomGenerator = React.createClass({
 var PeerConnection = React.createClass({
 	queue: [],
 	getInitialState: function () {
-		return {connections: [], messages: [], chat: false, files: {}};
+		return {connections: [], messages: [], chat: false, files: {}, videos: [], peer: undefined};
 	},
 	getUsers: function () {
 		$.get('/connections', function (response) {
@@ -119,18 +129,29 @@ var PeerConnection = React.createClass({
 		this.getUsers();
 	},
 	connect: function () {
-		var peer = new Peer(this.props.user, {host: window.location.hostname, port: 9000, path: '/api', reliable: true}),
+		var peer = new Peer(this.props.user.replace(" ", "_"), {host: window.location.hostname, port: 80, path: '/api', debug: 3}),
 			users = this.state.connections,
 			connections = [],
 			messages = [];
-		console.log('connecting to peers', users);
+		this.state.peer = peer;
+		this.setState(this.state);
 		_.each(users, function (user) {
-			var conn = peer.connect(user.peerID);
+			var conn = peer.connect(user.peerID, {reliable: true});
 			connections.push(conn);
+
+			conn.on('error', function (error) {
+				console.log(error);
+			});
+
 			conn.on('open', function () {
 				conn.on('data', this.getMessage);
-				this.setState({connections: connections, chat: true, messages: messages});
+				this.setState({connections: connections, chat: true, messages: messages, peer: peer});
 			}.bind(this));
+
+			conn.on('close', function (conn) {
+				console.log('data close', conn);
+			});
+
 		}.bind(this));
 
 		peer.on('connection', function (conn) {
@@ -143,6 +164,51 @@ var PeerConnection = React.createClass({
 				this.getMessage(data);
 			}.bind(this));
 		}.bind(this));
+
+		peer.on('close', function (conn) {
+			console.log('close', conn);
+		});
+
+		peer.on('disconnected', function (conn) {
+			console.log('disconnected', conn);
+			var newState = {
+					connections: this.state.connections,
+					peer: this.state.peer
+				},
+				found = newState.connections.indexOf(conn);
+			if (found !== -1) {
+				newState.connections.slice(found, 1);
+			}
+			if (!newState.connections.length) {
+				newState.chat = false;
+				newState.messages = [];
+				newState.files = {};
+				newState.videos = [];
+			}
+			this.setState(newState);
+		}.bind(this));
+
+		peer.on('call', function (call) {
+			navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+			navigator.getUserMedia({video: true, audio: true}, function (stream) {
+				call.answer(stream);
+				call.on('stream', function (remoteStream) {
+					this.state.videos.push({url: URL.createObjectURL(remoteStream), caller: call.peer});
+					this.setState(this.state);
+				}.bind(this));
+			}.bind(this), function (error) {
+				console.log(error);
+			});
+		}.bind(this));
+	},
+	signOut: function () {
+		this.disconnectPeer();
+	},
+	disconnectPeer: function () {
+		_.each(this.state.connections, function (conn) {
+			conn.close();
+		});
+		//this.state.peer.destroy();
 	},
 	getMessage: function (msg) {
 		if (msg.blob && msg.blob.constructor === ArrayBuffer) {
@@ -227,7 +293,7 @@ var PeerConnection = React.createClass({
 	startWorker: function () {
 		this.worker = setInterval(function (self) {
 			self.pickUpJob();
-		}, 100, this);
+		}, 50, this);
 	},
 	pickUpJob: function () {
 		if (this.queue.length) {
@@ -265,29 +331,56 @@ var PeerConnection = React.createClass({
 			this.addToQueue(payload);
 		}
 	},
+	startVideo: function () {
+		var users = this.state.connections;
+		navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia,
+		navigator.getUserMedia({video: true, audio: true}, function (stream) {
+			_.each(users, function (user) {
+				var call = this.state.peer.call(user.peer, stream);
+				call.on('stream', function (remoteStream) {
+					this.state.videos.push({url: URL.createObjectURL(remoteStream), caller: user.peer});
+					this.setState(this.state);
+				}.bind(this));
+			}.bind(this));
+		}.bind(this), function (error) {
+			console.log('Failed to get local stream', error);
+		});
+	},
 	generateID: function () {
 		return _.random(10000, 99999);
 	},
 	render: function () {
 		var chatBox = this.state.chat ?
-			<ChatBox messages={this.state.messages} currentUser={this.props.user} onChatMessage={this.sendMessage} onFileSubmit={this.uploadFile} /> :
+			<ChatBox messages={this.state.messages} currentUser={this.props.user} room={this.props.room}
+				onChatMessage={this.sendMessage}
+				onFileSubmit={this.uploadFile}
+				onSignOut={this.signOut}
+				onStartVideo={this.startVideo}/> :
 			<div>
 				<span>Waiting for other people to join session...</span>
 			</div> ;
+		var conferenceRoom = this.state.videos.length ? <ConferenceRoom videos={this.state.videos} /> : '';
 		return (
-			<div>
-				{chatBox}
+			<div className="row">
+				<div className="col-sm-4 col-xs-12">{chatBox}</div>
+				<div className="col-sm-8 col-xs-12">{conferenceRoom}</div>
 			</div>
 		);
 	}
 });
 
 var ChatBox = React.createClass({
+	startCall: function () {
+		this.props.onStartVideo();
+	},
 	sendMessage: function (message) {
 		this.props.onChatMessage(message);
 	},
 	sendFile: function (event) {
 		this.props.onFileSubmit(event);
+	},
+	signOut: function () {
+		this.props.onSignOut();
 	},
 	render: function () {
 		return (
@@ -295,7 +388,7 @@ var ChatBox = React.createClass({
 				<div className="row">
 					<div className="col-md-5 chatBox">
 						<div className="panel panel-primary">
-							<ChatHeader />
+							<ChatHeader onStartCall={this.startCall} room={this.props.room} onSignOut={this.signOut}/>
 							<ChatBody messages={this.props.messages} currentUser={this.props.currentUser} />
 							<ChatFooter onChatSubmit={this.sendMessage} onFileChange={this.sendFile}/>
 						</div>
@@ -307,17 +400,31 @@ var ChatBox = React.createClass({
 });
 
 var ChatHeader = React.createClass({
+	startVideo: function (event) {
+		event.preventDefault();
+		this.props.onStartCall();
+	},
+	signOut: function (event) {
+		event.preventDefault();
+		this.props.onSignOut();
+	},
 	render: function () {
 		return (
 			<div className="panel-heading">
-				<span className="glyphicon glyphicon-comment"></span> Chat
+				<span className="glyphicon glyphicon-comment"></span> Chat Room: {this.props.room}
 				<div className="btn-group pull-right">
 					<button type="button" className="btn btn-default btn-xs dropdown-toggle" data-toggle="dropdown">
 						<span className="glyphicon glyphicon-chevron-down"></span>
 					</button>
 					<ul className="dropdown-menu slidedown">
 						<li>
-							<a href="#">
+							<a href="#" onClick={this.startVideo}>
+								<span className="glyphicon glyphicon-facetime-video"></span>Start Video
+							</a>
+						</li>
+						<li className="divider"></li>
+						<li>
+							<a href="#" onClick={this.signOut}>
 								<span className="glyphicon glyphicon-off"></span>Sign Out
 							</a>
 						</li>
@@ -428,6 +535,9 @@ var Room = React.createClass({
 	getInitialState: function () {
 		return {username: ''};
 	},
+	componentDidMount: function () {
+		document.title = 'AnonShare - Room: ' + this.getParams().roomId;
+	},
 	setUsername: function (event) {
 		event.preventDefault();
 		var form = event.currentTarget;
@@ -435,14 +545,12 @@ var Room = React.createClass({
 		this.setState({username: user});
 	},
 	render: function () {
-		var roomLocation = 'You are in room ' + this.getParams().roomId;
+		var roomLocation = this.getParams().roomId;
 		var loggedIn = this.state.username ?
 			<div>
-				<h4>Welcome {this.state.username}! {roomLocation}</h4>
-				<PeerConnection user={this.state.username}/>
+				<PeerConnection user={this.state.username} room={roomLocation}/>
 			</div> :
 			<div>
-				<h4>{roomLocation}</h4>
 				<form name="username" onSubmit={this.setUsername} className="form-inline">
 					<div className="form-group">
 						<label for="username" className="sr-only">Username</label>
@@ -477,6 +585,7 @@ var Rooms = React.createClass({
 		});
 	},
 	componentDidMount: function () {
+		document.title = 'AnonShare - Rooms';
 		this.getRooms();
 	},
 	render: function () {
@@ -504,6 +613,37 @@ var RoomList = React.createClass({
 						{rooms}
 					</ul>
 				</div>
+			</div>
+		);
+	}
+});
+
+var ConferenceRoom = React.createClass({
+	render: function () {
+		var Videos = this.props.videos.map(function (video) {
+			console.log('video', video);
+			if (video.url) {
+				return (
+					<Video url={video.url} caller={video.caller} />
+				);
+			} else {
+				return <span>Not supported</span>
+			}
+		});
+		return (
+			<div>{Videos}</div>
+		);
+	}
+});
+
+var Video = React.createClass({
+	render: function () {
+		return (
+			<div className="col-sm-6">
+				<div className="embed-responsive embed-responsive-4by3">
+					<video className="embed-responsive-item" src={this.props.url} autoPlay controls></video>
+				</div>
+				<span className="label label-primary">{this.props.caller}</span>
 			</div>
 		);
 	}

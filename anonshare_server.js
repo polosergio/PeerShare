@@ -12,7 +12,7 @@ app.use('/', express.static(__dirname));
 app.use('/api', peerServer);
 app.use(bodyParser.json());
 
-server.listen(9000);
+server.listen(80);
 
 peerServer.on('connection', function (id) {
 	connections.push({peerID: id});
