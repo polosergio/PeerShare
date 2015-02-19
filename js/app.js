@@ -15,12 +15,12 @@ var Home = React.createClass({
 
 var Header = React.createClass({
 	render: function () {
-		var subText = 'WebRTC interface',//'For Annette\'s use only ',
+		var subText = 'For Annette\'s use only ',
 			imgStyle = {
 				height: '30px',
 				width: '30px'
 			},
-			smiley = '';//<img src="http://apps.timwhitlock.info/static/images/emoji/emoji-apple/1f602.png" style={imgStyle}/>;
+			smiley = <img src="http://apps.timwhitlock.info/static/images/emoji/emoji-apple/1f602.png" style={imgStyle}/>;
 		return (
 			<div className="page-header">
 				<h1>Movie Sharing <small>{subText} {smiley}</small></h1>
