@@ -22,12 +22,24 @@ peerServer.on('disconnect', function (id) {
 	connections.splice(connections.indexOf(_.findWhere(connections, {peerID: id})), 1);
 });
 
-app.get('/rooms', function (req, res) {
-	res.send(JSON.stringify(_.pluck(rooms, 'id')));
+app.get('/connections', function (req, res) {
+	var response = [],
+		roomID = req.query.room,
+		room = _.findWhere(rooms, {id: parseInt(roomID)});;
+	if (!_.isEmpty(roomID) && !_.isEmpty(room)) {
+		_.each(connections, function (peer) {
+			if (room.conn.indexOf(peer.peerID) !== -1) {
+				response.push(peer);
+			}
+		});
+	} else {
+		response = {message: "Invalid Room"};
+	}
+	res.send(JSON.stringify(response));
 });
 
-app.get('/connections', function (req, res) {
-	res.send(JSON.stringify(connections));
+app.get('/rooms', function (req, res) {
+	res.send(JSON.stringify(_.pluck(rooms, 'id')));
 });
 
 app.post('/rooms', function (req, res) {
@@ -38,13 +50,13 @@ app.post('/rooms', function (req, res) {
 
 app.post('/rooms/:id', function (req, res) {
 	var id = req.params.id,
-		peerId = req.body.peerId,
+		user = req.body.user,
 		room = _.findWhere(rooms, {id: parseInt(id)});
 	if (!_.isEmpty(room)) {
-		room.conn.push(peerId);
+		room.conn.push(user);
 		res.send(JSON.stringify(room));
 	} else {
-		res.send(JSON.stringify({error: 'invalid room'}));
+		res.send(JSON.stringify({error: 'Invalid Room'}));
 	}
 });
 
@@ -59,29 +71,3 @@ function generateID () {
 	}
 }
 
-
-/*
- var express = require('express'),
-	bodyParser = require('body-parser'),
-	_ = require('lodash'),
-	app = express(),
-	ExpressPeerServer = require('peer').ExpressPeerServer,
-	connections = [],
-	server;
-
-server = app.listen(9000);
-
-
-app.use('/', express.static(__dirname));
-app.use(bodyParser.json());
-app.use('/api', ExpressPeerServer(server, {debug: true}));
-
-server.on('connection', function (req, id) {
-	console.log('peer connected', id);
-});
-
-server.on('disconnect', function (id) {
-	console.log(id);
-});
-
-*/
