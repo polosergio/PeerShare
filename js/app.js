@@ -156,9 +156,23 @@ var PeerConnection = React.createClass({
 				this.setState({connections: connections, chat: true, messages: messages, peer: peer});
 			}.bind(this));
 
-			conn.on('close', function (conn) {
-				console.log('data close', conn);
-			});
+			conn.on('close', function () {
+				var newState = {
+						connections: this.state.connections,
+						peer: this.state.peer
+					},
+					found = _.findWhere(newState.connections, {id: conn.id});
+				if (!_.isEmpty(found)) {
+					_.pull(newState.connections, found);
+				}
+				if (!newState.connections.length) {
+					newState.chat = false;
+					newState.messages = [];
+					newState.files = {};
+					newState.videos = [];
+				}
+				this.setState(newState);
+			}.bind(this));
 
 		}.bind(this));
 
@@ -173,29 +187,13 @@ var PeerConnection = React.createClass({
 			}.bind(this));
 		}.bind(this));
 
-		peer.on('close', function (conn) {
-			console.log('close', conn);
-		});
+		peer.on('close', function () {
+			this.setState(this.getInitialState());
+			this.props.onSignOut();
+		}.bind(this));
 
 		peer.on('disconnected', function (conn) {
 			console.log('disconnected', conn);
-			if (this.isMounted()) {
-				var newState = {
-						connections: this.state.connections,
-						peer: this.state.peer
-					},
-					found = newState.connections.indexOf(conn);
-				if (found !== -1) {
-					newState.connections.slice(found, 1);
-				}
-				if (!newState.connections.length) {
-					newState.chat = false;
-					newState.messages = [];
-					newState.files = {};
-					newState.videos = [];
-				}
-				this.setState(newState);
-			}
 		}.bind(this));
 
 		peer.on('call', function (call) {
@@ -532,6 +530,9 @@ var Room = React.createClass({
 	componentDidMount: function () {
 		document.title = 'AnonShare - Room: ' + this.getParams().roomId;
 	},
+	signOut: function () {
+		this.setState({username: ''});
+	},
 	setUsername: function (event) {
 		event.preventDefault();
 		var form = event.currentTarget;
@@ -554,7 +555,7 @@ var Room = React.createClass({
 		var roomLocation = this.getParams().roomId;
 		var loggedIn = this.state.username ?
 			<div>
-				<PeerConnection user={this.state.username} room={roomLocation}/>
+				<PeerConnection user={this.state.username} room={roomLocation} onSignOut={this.signOut}/>
 			</div> :
 			<div>
 				<form name="username" onSubmit={this.setUsername} className="form-inline">
