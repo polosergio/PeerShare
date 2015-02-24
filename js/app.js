@@ -7,7 +7,12 @@ var Home = React.createClass({
 	render: function () {
 		return (
 			<div>
-				<h4>Hope it works</h4>
+				<h4>Demo Instructions</h4>
+				<ul>
+					<li>Create or join room</li>
+					<li>Input username</li>
+					<li>Start sharing!</li>
+				</ul>
 			</div>
 		);
 	}
@@ -15,15 +20,16 @@ var Home = React.createClass({
 
 var Header = React.createClass({
 	render: function () {
-		var subText = 'WebRTC interface',//'For Annette\'s use only ',
+		var subText = ' WebRTC interface',
 			imgStyle = {
 				height: '30px',
 				width: '30px'
-			},
-			smiley = '';//<img src="http://apps.timwhitlock.info/static/images/emoji/emoji-apple/1f602.png" style={imgStyle}/>;
+			};
 		return (
 			<div className="page-header">
-				<h1>Movie Sharing <small>{subText} {smiley}</small></h1>
+				<h1>Instant Sharing
+					<small>{subText}</small>
+				</h1>
 			</div>
 		);
 	}
@@ -99,7 +105,6 @@ var RoomGenerator = React.createClass({
 			url: '/rooms',
 			contentType: 'application/json',
 			success: function (response) {
-				console.log(response);
 				this.props.onSubmit();
 			}.bind(this),
 			error: function (xhr, status, err) {
@@ -120,13 +125,16 @@ var PeerConnection = React.createClass({
 		return {connections: [], messages: [], chat: false, files: {}, videos: [], peer: undefined};
 	},
 	getUsers: function () {
-		$.get('/connections', function (response) {
-			console.log(response);
+		var url = '/connections?room=' + this.props.room;
+		$.get(url, function (response) {
 			this.setState({connections: JSON.parse(response)}, this.connect);
 		}.bind(this));
 	},
 	componentDidMount: function () {
 		this.getUsers();
+	},
+	componentWillUnmount: function () {
+		this.signOut();
 	},
 	connect: function () {
 		var peer = new Peer(this.props.user.replace(" ", "_"), {host: window.location.hostname, port: 80, path: '/api', debug: 3}),
@@ -171,21 +179,23 @@ var PeerConnection = React.createClass({
 
 		peer.on('disconnected', function (conn) {
 			console.log('disconnected', conn);
-			var newState = {
-					connections: this.state.connections,
-					peer: this.state.peer
-				},
-				found = newState.connections.indexOf(conn);
-			if (found !== -1) {
-				newState.connections.slice(found, 1);
+			if (this.isMounted()) {
+				var newState = {
+						connections: this.state.connections,
+						peer: this.state.peer
+					},
+					found = newState.connections.indexOf(conn);
+				if (found !== -1) {
+					newState.connections.slice(found, 1);
+				}
+				if (!newState.connections.length) {
+					newState.chat = false;
+					newState.messages = [];
+					newState.files = {};
+					newState.videos = [];
+				}
+				this.setState(newState);
 			}
-			if (!newState.connections.length) {
-				newState.chat = false;
-				newState.messages = [];
-				newState.files = {};
-				newState.videos = [];
-			}
-			this.setState(newState);
 		}.bind(this));
 
 		peer.on('call', function (call) {
@@ -205,10 +215,12 @@ var PeerConnection = React.createClass({
 		this.disconnectPeer();
 	},
 	disconnectPeer: function () {
-		_.each(this.state.connections, function (conn) {
-			conn.close();
+		_.each(this.state.peer.connections, function (connections) {
+			_.each(connections, function (conn) {
+				conn.close();
+			});
 		});
-		//this.state.peer.destroy();
+		this.state.peer.destroy();
 	},
 	getMessage: function (msg) {
 		if (msg.blob && msg.blob.constructor === ArrayBuffer) {
@@ -233,41 +245,12 @@ var PeerConnection = React.createClass({
 		} else {
 			try {
 				var message = _.extend(JSON.parse(msg), {timestamp: (new Date).toString()});
-				message = this.getHardcodedFile(message);
 				this.state.messages.push(message);
 			} catch (e) {
 				console.log(e);
 			}
 		}
 		this.setState(this.state);
-	},
-	getHardcodedFile: function (message) {
-		if (message.text === 'fileone') {
-			_.extend(message, {
-				text: undefined,
-				url: '/files/Kingsman_The_Secret_Service.wmv',
-				name: 'Kingsman_The_Secret_Service.wmv'
-			});
-		} else if (message.text === 'filetwo') {
-			_.extend(message, {
-				text: undefined,
-				url: '/files/Love.Rosie.2014.avi',
-				name: 'Love.Rosie.2014.avi'
-			});
-		} else if (message.text === 'filethree') {
-			_.extend(message, {
-				text: undefined,
-				url: '/files/Big.Eyes.2014.mkv',
-				name: 'Big.Eyes.2014.mkv'
-			});
-		} else if (message.text === 'filefour') {
-			_.extend(message, {
-				text: undefined,
-				url: '/files/theimmunesystem.pdf',
-				name: 'theimmunesystem.pdf'
-			});
-		}
-		return message;
 	},
 	sendMessage: function (message) {
 		var message = _.extend(message, {from: this.props.user});
@@ -331,20 +314,31 @@ var PeerConnection = React.createClass({
 			this.addToQueue(payload);
 		}
 	},
-	startVideo: function () {
-		var users = this.state.connections;
-		navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia,
-		navigator.getUserMedia({video: true, audio: true}, function (stream) {
-			_.each(users, function (user) {
-				var call = this.state.peer.call(user.peer, stream);
-				call.on('stream', function (remoteStream) {
-					this.state.videos.push({url: URL.createObjectURL(remoteStream), caller: user.peer});
-					this.setState(this.state);
-				}.bind(this));
-			}.bind(this));
-		}.bind(this), function (error) {
-			console.log('Failed to get local stream', error);
+	getInactiveVideos: function (connections) {
+		return _.transform(connections, function (result, value, key) {
+			found = _.findWhere(value, {type: 'media'});
+			if (_.isEmpty(found)) {
+				result[key] = value;
+			}
 		});
+	},
+	startVideo: function (ignore) {
+		var connections = this.state.peer.connections,
+			users = this.getInactiveVideos(connections);
+		if (!_.isEmpty(users)) {
+			navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia,
+			navigator.getUserMedia({video: true, audio: true}, function (stream) {
+				_.each(_.keys(users), function (user) {
+					var call = this.state.peer.call(user, stream);
+					call.on('stream', function (remoteStream) {
+						this.state.videos.push({url: URL.createObjectURL(remoteStream), caller: user.peer});
+						this.setState(this.state);
+					}.bind(this));
+				}.bind(this));
+			}.bind(this), function (error) {
+				console.log('Failed to get local stream', error);
+			});
+		}
 	},
 	generateID: function () {
 		return _.random(10000, 99999);
@@ -542,7 +536,19 @@ var Room = React.createClass({
 		event.preventDefault();
 		var form = event.currentTarget;
 		user = $(form).find('#username').val();
-		this.setState({username: user});
+		$.ajax({
+			url: '/rooms/' + this.getParams().roomId,
+			data: JSON.stringify({user: user}),
+			contentType: 'application/json',
+			type: 'POST',
+			dataType: 'json',
+			success: function (response) {
+				this.setState({username: user});
+			}.bind(this),
+			error: function (xhr, status, err) {
+				console.log(status, err.toString());
+			}
+		});
 	},
 	render: function () {
 		var roomLocation = this.getParams().roomId;
@@ -621,7 +627,6 @@ var RoomList = React.createClass({
 var ConferenceRoom = React.createClass({
 	render: function () {
 		var Videos = this.props.videos.map(function (video) {
-			console.log('video', video);
 			if (video.url) {
 				return (
 					<Video url={video.url} caller={video.caller} />
