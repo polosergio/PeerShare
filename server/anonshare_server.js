@@ -8,7 +8,7 @@ var peerServer = ExpressPeerServer(server, {debug: true});
 var rooms = [];
 var connections = [];
 
-app.use('/', express.static(__dirname));
+app.use('/', express.static(__dirname + '/../client'));
 app.use('/api', peerServer);
 app.use(bodyParser.json());
 
