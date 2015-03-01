@@ -1,0 +1,14 @@
+{
+	"name": "anonshare",
+	"version": "1.0.0",
+	"description": "Server running example WebRTC program using PeerJS",
+	"author": "Sergio Polo <sergio.polo@gmail.com>",
+	"private": true,
+	"dependencies": {
+		"express": "*",
+		"lodash": "*",
+		"body-parser": "*",
+		"http": "*",
+		"peer": "*"
+	}
+}
