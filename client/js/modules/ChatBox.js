@@ -1,7 +1,6 @@
 var ChatBox = React.createClass({
-	queue: [],
 	getInitialState: function () {
-		return {messages: [], connections: [], files: {}};
+		return {messages: [], connections: []};
 	},
 	componentDidMount: function () {
 		var users = this.props.users,
@@ -50,27 +49,13 @@ var ChatBox = React.createClass({
 		}
 		this.setState({connections: connections, messages: this.state.messages});
 	},
-	componentWillReceiveProps: function (props) {
-	},
 	getMessage: function (msg) {
 		if (msg.blob && msg.blob.constructor === ArrayBuffer) {
-			if (_.isUndefined(this.state.files[msg.id])) {
-				this.state.files = {};
-				this.state.files[msg.id] = {
-					file: msg.file,
-					blob: {}
-				}
-				this.state.files[msg.id].blob[msg.chunkId] = new Uint8Array(msg.blob);
-			} else {
-				this.state.files[msg.id].blob[msg.chunkId] = new Uint8Array(msg.blob);
-				if (msg.chunks === _.keys(this.state.files[msg.id].blob).length) {
-					var dataView = _.values(this.state.files[msg.id].blob),
-						dataBlob = new Blob(dataView),
-						url = window.URL.createObjectURL(dataBlob),
-						message = _.extend(JSON.parse(msg.file), {url: url});
-					this.state.messages.push(message);
-				}
-			}
+			var dataView = new Uint8Array(msg.blob),
+				dataBlob = new Blob([dataView]),
+				url = window.URL.createObjectURL(dataBlob),
+				message = _.extend(JSON.parse(msg.file), {url: url});
+			this.state.messages.push(message);
 		} else {
 			try {
 				var message = _.extend(JSON.parse(msg), {timestamp: (new Date).toString()});
@@ -99,51 +84,16 @@ var ChatBox = React.createClass({
 		this.eachActiveConnection(message);
 		this.setState(this.state);
 	},
-	addToQueue: function (data) {
-		if (_.isUndefined(this.worker)) {
-			this.startWorker();
-		}
-		this.queue.push(data);
-	},
-	startWorker: function () {
-		this.worker = setInterval(function (self) {
-			self.pickUpJob();
-		}, 50, this);
-	},
-	pickUpJob: function () {
-		if (this.queue.length) {
-			this.eachActiveConnection(this.queue.shift());
-		} else {
-			clearInterval(this.worker);
-			this.worker = undefined;
-		}
-	},
 	sendFile: function (event) {
 		event.preventDefault();
-		var file = event.target.files[0],
-			id = _.random(10000, 99999),
-			chunkSize = 16000,
-			totalChunks = Math.ceil(file.size / chunkSize),
-			payload = {};
+		var file = event.target.files[0];
 		_.extend(file, {
 			from: this.props.user,
 			timestamp: (new Date()).toString()
 		});
 		this.state.messages.push(file);
 		this.setState(this.state);
-		for (var i = 0; i < totalChunks; i++) {
-			var end = ((i + 1) * chunkSize > file.size) ? file.size : (i + 1) * chunkSize,
-				start = i * chunkSize,
-				blob = file.slice(start, end);
-			payload = {
-				id: id,
-				chunks: totalChunks,
-				chunkId: i,
-				file: JSON.stringify(file),
-				blob: blob
-			};
-			this.addToQueue(payload);
-		}
+		this.eachActiveConnection({file: JSON.stringify(file), blob: file.slice()});
 	},
 	signOut: function () {
 		_.each(this.state.peer.connections, function (connections) {

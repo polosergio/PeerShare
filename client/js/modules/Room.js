@@ -1,7 +1,7 @@
 var Room = React.createClass({
 	mixins: [ReactRouter.State],
 	getInitialState: function () {
-		return {username: ''};
+		return {username: '', error: ''};
 	},
 	componentDidMount: function () {
 		document.title = 'AnonShare - Room: ' + this.getParams().roomId;
@@ -23,13 +23,14 @@ var Room = React.createClass({
 				this.setState({username: user});
 			}.bind(this),
 			error: function (xhr, status, err) {
-				console.log(status, err.toString());
-			}
+				this.setState({error: xhr.responseJSON.error});
+			}.bind(this)
 		});
 	},
 	render: function () {
-		var roomLocation = this.getParams().roomId;
-		var loggedIn = this.state.username ?
+		var roomLocation = this.getParams().roomId,
+			errorSpan = this.state.error ? <span className="alert alert-danger">{this.state.error}</span> : '',
+			loggedIn = this.state.username ?
 			<div>
 				<PeerConnection user={this.state.username} room={roomLocation} onSignOut={this.signOut}/>
 			</div> :
@@ -41,6 +42,8 @@ var Room = React.createClass({
 					</div>
 					<button className="btn btn-primary" type="submit">Connect</button>
 				</form>
+				<br />
+				<div>{errorSpan}</div>
 			</div> ;
 		return (
 			<div className="row-fluid">

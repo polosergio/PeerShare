@@ -32,10 +32,11 @@ app.get('/connections', function (req, res) {
 				response.push(peer);
 			}
 		});
+		res.status(200).send(JSON.stringify(response));
 	} else {
-		response = {message: "Invalid Room"};
+		response = {error: "Invalid Room"};
+		res.status(404).send(JSON.stringify(response));
 	}
-	res.send(JSON.stringify(response));
 });
 
 app.get('/rooms', function (req, res) {
@@ -54,9 +55,9 @@ app.post('/rooms/:id', function (req, res) {
 		room = _.findWhere(rooms, {id: parseInt(id)});
 	if (!_.isEmpty(room)) {
 		room.conn.push(user);
-		res.send(JSON.stringify(room));
+		res.status(200).send(JSON.stringify(room));
 	} else {
-		res.send(JSON.stringify({error: 'Invalid Room'}));
+		res.status(404).send(JSON.stringify({error: 'Invalid Room'}));
 	}
 });
 
