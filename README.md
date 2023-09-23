@@ -1,4 +1,4 @@
-# AnonShare
+# PeerShare
 ## Running server
 * Change into server directory and run:
 <br>
